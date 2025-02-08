@@ -46,3 +46,9 @@ const projectIDNameMap = {
   "---": 'Grocery',
   "---": 'Notes'
 }
+
+function CHECK_SYNC_TAGS(arr) {
+  if(!arr || !arr.length || !Array.isArray(arr)) return false
+  const set = new Set(["ADDED_TO_NOTION", "ADDED_FROM_NOTION"])
+  return arr.some(ele => set.has(ele))
+}
