@@ -1,11 +1,12 @@
 function syncFromTodoistToNotion() {
-  for (let i = 0; i < 10; i++) {
-    myFunctionT_N(i);
-     Utilities.sleep(60 * 1000 /freq);
+  for (let i = 0; i < freq; i++) {
+    function_t_n(i)
+    if (i === freq - 1) continue; // Not delaying on the last iteration
+    Utilities.sleep(60 * 1000 / freq);
   }
 }
 
-function myFunctionT_N(i) {
+function function_t_n(i) {
   console.log('----------- Todoist_To_Notion_Sync --- ', i, urlfetchExecution);
   Todoist_To_Notion_Sync()
 }
@@ -15,12 +16,20 @@ function Todoist_To_Notion_Sync() {
     const syncToken = SyncTokenRange.getValue();
     const { todoist_data, sync_token } = Fetch_Todoist_Data_Value(syncToken);
 
+    if (!sync_token) {
+      throw Error("Error in fetching data from todoist")
+    }
     if (!todoist_data || todoist_data.length < 1) {
+      Date_string = Utilities.formatDate(new Date(), "IST", 'E, MMM dd yyyy, HH:mm:ss')
+      LastSyncTimeRange.setValue([Date_string])
       SyncTokenRange.setValue([sync_token]);
       return
     }
 
-    let taskIds = todoist_data.map(task => task.id)
+    // let taskIds = todoist_data.map(task => task.id)
+    let taskIds = [...new Set(todoist_data.flatMap(task => 
+      task.parent_id ? [task.id, task.parent_id] : [task.id]
+    ))];
 
     const pages = Fetch_notion_pages(taskIds);
 
@@ -31,22 +40,71 @@ function Todoist_To_Notion_Sync() {
       }
     })
 
+    const page_created = []
+    const page_updated = []
+    const page_deleted = []
+    const delete_from_todoist = []
+    let page_ignored = 0;
     todoist_data.forEach(task => {
       const pageFound = pagesMapByTaskId[task?.id]
 
-      if (!pageFound && !task.is_deleted) {
-        create(task);
-      } else if(!pageFound && task.is_deleted) {
+      if ((!pageFound && (task.is_deleted || task.checked)) ||
+        (pageFound && !task.is_deleted && (Math.abs(new Date(task.updated_at) - pageFound.properties["Sync timestamp"].number) < 1000))) {
+        // Do Nothing: If Task is deleted or completed in todoist, and was removed from notion
+        // Do Nothing: If Task in todoist is not updated by user after sync via API (When task was updated by API, we strore that time in notion)
+        page_ignored++
         return
-      } else if(pageFound && task.is_deleted) {
-          Delete_page(pageFound)
-      } else if(pageFound && !task.is_deleted && (Math.abs(new Date(task.updated_at) - pageFound.properties["Sync timestamp"].number) < 1000)){
-        // PROCESS ONLY THOSE ENTRIES THAT ARE UPDATED BY USER, NOT API
-        return
+      } else if (!pageFound && CHECK_SYNC_TAGS(task.labels)) {
+        // Delete those task from todoist that are updated in todoist, after they were removed from Notion
+        delete_from_todoist.push(task.id)
+      } else if (!pageFound && !task.is_deleted && !CHECK_SYNC_TAGS(task.labels)) {
+        // Don't create task on notion, if sync label exist on it
+        let parentNotionId = null
+        if(task.parent_id) {
+          parentNotionId = (pagesMapByTaskId[task.parent_id])?.id
+        }
+        const page = Create(task, parentNotionId);
+        page_created.push(page)
+      } else if (pageFound && task.is_deleted) {
+        const res = Delete_page(pageFound)
+        page_deleted.push(res)
       } else {
-        update(pageFound, task)
+        let parentNotionId = null
+        if(task.parent_id) {
+          parentNotionId = pages[task.parent_id]
+        }
+        const res = Update(pageFound, task, parentNotionId)
+        page_updated.push(res)
       }
     })
+    const taskSyncArray = page_created.filter(a => !!a).map(page => {
+      let { taskDetails } = page
+      return {
+        taskId: taskDetails.id,
+        pageId: page.id,
+        url: page.url,
+        labels: taskDetails.labels,
+        type: "item_update"
+      }
+    })
+
+    if (delete_from_todoist.length) {
+      const taskIdToBeDeleted = delete_from_todoist.filter(a => !!a).map(taskID => {
+        return {
+          taskId: taskID,
+          type: "item_delete"
+        }
+      })
+      taskSyncArray.push(...taskIdToBeDeleted)
+    }
+
+    const syncPayload = Create_sync_payload(taskSyncArray)
+    Sync_todoist_operations(syncPayload)
+    if ((page_created.length + page_updated.length + page_deleted.length + page_ignored + delete_from_todoist.length) < todoist_data.length) {
+      throw Error("Error occured")
+    }
+    Date_string = Utilities.formatDate(new Date(), "IST", 'E, MMM dd yyyy, HH:mm:ss')
+    LastSyncTimeRange.setValue([Date_string])
     SyncTokenRange.setValue([sync_token]);
   } catch (error) {
     console.error('Error in Todoist_And_Notion_Talk:', error.message);
@@ -80,7 +138,7 @@ function Fetch_Todoist_Data_Value(syncToken) {
     }
   } catch (error) {
     console.error('Error in fetch_Todoist_Data:', error);
-    return [];
+    throw Error("Error in fetching data from todoist")
   }
 
 }
@@ -207,7 +265,7 @@ function get_labels() {
       'Authorization': `Bearer ${Todoist_Token}`,
     }
   }
-urlfetchExecution++
+  urlfetchExecution++
   UrlFetchApp.fetch(`https://api.todoist.com/rest/v2/labels`, option)
 }
 
@@ -225,7 +283,7 @@ function Delete_page(page) {
         archived: true
       })
     }
-urlfetchExecution++
+    urlfetchExecution++
     const response = UrlFetchApp.fetch(`https://api.notion.com/v1/pages/${page?.id}`, options)
 
     if (response.getResponseCode() !== 200) {
@@ -239,9 +297,14 @@ urlfetchExecution++
   }
 }
 
-function update(page, task) {
+function Update(page, task, parentPageId) {
   try {
     const taskObject = Create_object_task_for_notion(task, true)
+    if(parentPageId) {
+      taskObject["parent"] = {
+        "page_id": parentPageId
+      }
+    }
     const options = {
       method: 'patch',
       contentType: 'application/json',
@@ -252,7 +315,6 @@ function update(page, task) {
       payload: JSON.stringify(taskObject),
       muteHttpExceptions: true
     }
-
     const url = `https://api.notion.com/v1/pages/${page.id}`;
     urlfetchExecution++
     const response = UrlFetchApp.fetch(url, options);
@@ -268,11 +330,17 @@ function update(page, task) {
   }
 }
 
-function create(task) {
+function Create(task, parentPageId = null) {
   try {
     const taskObject = Create_object_task_for_notion(task)
-    taskObject["parent"] = {
-      "database_id": Database_ID
+    if(parentPageId) {
+      taskObject["parent"] = {
+        "page_id": parentPageId
+      }
+    } else {
+      taskObject["parent"] = {
+        "database_id": Database_ID
+      }
     }
     const options = {
       method: 'post',
@@ -294,8 +362,11 @@ function create(task) {
     }
 
     console.log(`Page created in Notion: ${data?.id}`);
+    data.taskDetails = task
+    return data
   } catch (error) {
     console.error('Error creating page in Notion:', error.message);
+    throw error
   }
 }
 
@@ -306,7 +377,7 @@ function Create_object_task_for_notion(task, isUpdate = false) {
         "title": [
           {
             "text": {
-              "content": task.checked ? "[Done] " + task.content : task.content
+              "content": task.checked ? "✅ " + task.content : task.content
             }
           }
         ]
@@ -325,9 +396,6 @@ function Create_object_task_for_notion(task, isUpdate = false) {
             }
           }
         ]
-      },
-      "isSync": {
-        "checkbox": true
       },
       "Status": {
         "checkbox": task.checked
@@ -381,14 +449,17 @@ function Create_object_task_for_notion(task, isUpdate = false) {
       }
     })
   }
-
-  const startDueDate = task.due?.['date'] ? new Date(task.due.date) : null;
+  const startDueDate = task?.due?.date ? new Date(task.due.date) : null;
   const dueDate = {}
-  if (startDueDate) {
-    dueDate.start = startDueDate?.toISOString()
+
+  if (startDueDate && task.due?.date.includes("T")) {
+    dueDate.start = Utilities.formatDate(startDueDate, 'Asia/Kolkata', 'yyyy-MM-dd\'T\'HH:mm:ssXXX')
+  }
+  if (startDueDate && !task.due?.date.includes("T")) {
+    dueDate.start = task.due.date;
   }
   const endDueDate = startDueDate
-  if (endDueDate && task.duration?.amount > 0) {
+  if (endDueDate && task?.due?.date?.includes("T") && task.duration?.amount > 0) {
     if ((task.duration?.unit)?.toLowerCase()?.includes("minute")) {
       endDueDate.setMinutes(startDueDate.getMinutes() + task.duration?.amount);
     } else if ((task.duration?.unit)?.toLowerCase()?.includes("hour")) {
@@ -397,7 +468,7 @@ function Create_object_task_for_notion(task, isUpdate = false) {
       endDueDate.setSeconds(startDueDate.getSeconds() + task.duration?.amount);
     }
 
-    dueDate.end = endDueDate?.toISOString()
+    dueDate.end = Utilities.formatDate(endDueDate, 'Asia/Kolkata', 'yyyy-MM-dd\'T\'HH:mm:ssXXX')
   }
   if (startDueDate || endDueDate) {
     data.properties["Due Date"] = {
@@ -411,4 +482,54 @@ function Create_object_task_for_notion(task, isUpdate = false) {
     }
   }
   return data
+}
+
+function Sync_todoist_operations(payload) {
+  var options = {
+    "method": "post",
+    "headers": {
+      "Authorization": "Bearer " + Todoist_Token,
+      "Content-Type": "application/json"
+    },
+    "payload": JSON.stringify({
+      commands: payload
+    }),
+  };
+
+  var API_URL = 'https://api.todoist.com/sync/v9/sync';
+  try {
+    var response = UrlFetchApp.fetch(API_URL, options);
+    var status = JSON.parse(response.getContentText())
+    console.log(`Task Sync Successfully`)
+    return status
+  } catch (e) {
+    Logger.log("Error: " + e.toString());
+  }
+}
+
+function Create_sync_payload(taskSyncArray) {
+  let payload = []
+  for (let i = 0; i < taskSyncArray.length; i++) {
+    let task = taskSyncArray[i]
+    if (task.type === 'item_delete') {
+      payload.push({
+        "type": "item_delete",
+        "uuid": Utilities.getUuid(),
+        "args": {
+          id: task.taskId,
+        }
+      })
+    } else if (task.type === 'item_update') {
+      payload.push({
+        "type": "item_update",
+        "uuid": Utilities.getUuid(),
+        "args": {
+          id: task.taskId,
+          labels: [...task.labels, "ADDED_TO_NOTION"],
+          description: "Notion Link: " + (task.url),
+        }
+      })
+    }
+  }
+  return payload
 }
