@@ -60,13 +60,29 @@ function Notion_To_Todoist_Sync() {
       const isTaskInvalid = (!task || task.is_deleted || task.is_completed)
       notionTaskIdMap[taskId] = page
 
-      if ((isDone || taskId) && isTaskInvalid) {
+      if (isDone && isTaskInvalid) {
         // Do Nothing: When A compelted task in updated on notion
         // Do Nothing: When A task is created in Done state on Notion
         // Do Nothing: When A task is completed on Notion, and isTaskInvalid on Todoist
-        // Do Nothing: When A task is not completed on Notion, and isTaskInvalid on Todoist
         return;
-      } else if (taskId && !isTaskInvalid) {
+      } else if (!isDone && taskId && isTaskInvalid) {
+        // When A task is not completed on Notion, and isTaskInvalid on Todoist
+        const data = Fetch_Todoist_Data_Sync(taskId)
+        if (data && data?.item && data?.item?.is_deleted) {
+          // DO NOTHING
+          return
+        } else if (data && data?.item && data.item?.checked) {
+          // Create item_uncomplete Command object
+          let syncPayload = {
+            "type": "item_uncomplete",
+            "uuid": Utilities.getUuid(),
+            "args": { "id": taskId }
+          }
+          payload.push(syncPayload)
+        }
+        return;
+      }
+      else if (taskId && !isTaskInvalid) {
         let { syncPayload, durationPayload } = Create_update_payload(page, task)
         if (durationPayload && "duration" in durationPayload) {
           durationPayloads.push({ taskId: task.id, durationPayload })
@@ -90,9 +106,22 @@ function Notion_To_Todoist_Sync() {
     if (payload && payload.length) {
       const response = Sync_todoist_operations(payload)
       // Update Data on Notion - Sync time, TaskID, etc.
-      let updatedTasks = payload.filter(obj => response.sync_status[obj.uuid] === "ok")
+      let updatedTasks = payload
+                          .filter(obj => obj.type !== "item_uncomplete")
+                          .filter(obj => response.sync_status[obj.uuid] === "ok")
       if (updatedTasks && updatedTasks.length) {
         update_notion_for_update(updatedTasks, notionTaskIdMap, todoistTaskMap)
+      }
+
+      let un_completed_tasks = payload
+                          .filter(obj => obj.type === "item_uncomplete")
+                          .filter(obj => response.sync_status[obj.uuid] === "ok")
+      for(let obj of un_completed_tasks) {
+        const page = notionTaskIdMap[obj?.args?.id];
+        if(page) {
+          page.content = page.properties.Name.title[0].plain_text
+          update_notion(page)
+        }
       }
     }
 
@@ -138,7 +167,7 @@ function Fetching_Notion_Data(lastSyncTimeStamp) {
   }
 }
 
-function Fetch_Todoist_Data(taskId = ["8844786135"]) {
+function Fetch_Todoist_Data(taskId) {
   try {
     const options = {
       headers: {
@@ -162,7 +191,30 @@ function Fetch_Todoist_Data(taskId = ["8844786135"]) {
   }
 }
 
+function Fetch_Todoist_Data_Sync(taskId) {
+  try {
+    const options = {
+      headers: {
+        'Authorization': `Bearer ${Todoist_Token}`
+      },
+      muteHttpExceptions: true,
+      payload: { item_id: taskId },
+    };
 
+    const url = `https://api.todoist.com/sync/v9/items/get`
+    urlfetchExecution++
+    const response = UrlFetchApp.fetch(url, options);
+
+    if (response.getResponseCode() === 200) {
+
+      return JSON.parse(response.getContentText());
+    } else {
+      throw new Error(`Failed to fetch Todoist data via sync : ${response.getContentText()}`);
+    }
+  } catch (error) {
+    throw Error('Error in Fetch_Todoist_Data_Sync:', error?.message)
+  }
+}
 
 function Create_Todoist(page) {
   try {
