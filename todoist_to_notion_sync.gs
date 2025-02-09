@@ -48,13 +48,17 @@ function Todoist_To_Notion_Sync() {
     todoist_data.forEach(task => {
       const pageFound = pagesMapByTaskId[task?.id]
 
-      if ((!pageFound && (task.is_deleted || task.checked)) ||
-        (pageFound && !task.is_deleted && (Math.abs(new Date(task.updated_at) - pageFound.properties["Sync timestamp"].number) < 1000))) {
+      const is_project_updated = pageFound && projectIDNameMap[task?.project_id] === pageFound?.properties["project"]?.select?.name ? false: true
+      const task_not_updated = pageFound && Math.abs(new Date(task.updated_at) - pageFound?.properties["Sync timestamp"].number) < 1000 ? false: true
+      if (!pageFound && (task.is_deleted || task.checked)) {
         // Do Nothing: If Task is deleted or completed in todoist, and was removed from notion
-        // Do Nothing: If Task in todoist is not updated by user after sync via API (When task was updated by API, we strore that time in notion)
         page_ignored++
         return
-      } else if (!pageFound && CHECK_SYNC_TAGS(task.labels)) {
+      } else if(pageFound && !task.is_deleted && !task_not_updated && !is_project_updated) {
+        // Do Nothing: If Task in todoist is not updated by user after sync via API (When task was updated by API, we strore that time in notion)
+        page_ignored++
+      }
+      else if (!pageFound && CHECK_SYNC_TAGS(task.labels)) {
         // Delete those task from todoist that are updated in todoist, after they were removed from Notion
         delete_from_todoist.push(task.id)
       } else if (!pageFound && !task.is_deleted && !CHECK_SYNC_TAGS(task.labels)) {
