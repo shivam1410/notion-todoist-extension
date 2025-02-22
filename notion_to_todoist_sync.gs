@@ -267,7 +267,7 @@ function Update_Todoist(taskId, payload) {
     const response = UrlFetchApp.fetch(url, options)
 
     if (response.getResponseCode() !== 200) {
-      throw new Error(`Failed to get the data : ${response.getContentText()}`)
+      throw new Error(`Update todoist failed : ${response.getContentText()}`)
     }
 
     console.log(`Task with ID: ${taskId} Updated on Todoist Successfully`)
@@ -441,7 +441,7 @@ function Create_todoist_payload_object(page, isUpdate, pastTask) {
   let durationPayload
   if (newDuration !== pastDuration) {
     durationPayload = {
-      duration: newDuration,
+      duration: newDuration > 0 ? newDuration : null,
       duration_unit: newDuration ? "minute" : null,
     };
   }
