@@ -48,13 +48,15 @@ function Todoist_To_Notion_Sync() {
     todoist_data.forEach(task => {
       const pageFound = pagesMapByTaskId[task?.id]
 
-      const is_project_updated = pageFound && projectIDNameMap[task?.project_id] === pageFound?.properties["project"]?.select?.name ? false: true
-      const task_not_updated = pageFound && Math.abs(new Date(task.updated_at) - pageFound?.properties["Sync timestamp"].number) < 1000 ? false: true
+      const is_project_updated = pageFound && projectIDNameMap[task?.project_id] === pageFound?.properties["Project"]?.select?.name ? false: true
+
+      const task_not_updated = pageFound && Math.abs(+new Date(task.updated_at) - pageFound?.properties["Sync timestamp"].number) < 1000 ? true: false
+
       if (!pageFound && (task.is_deleted || task.checked)) {
         // Do Nothing: If Task is deleted or completed in todoist, and was removed from notion
         page_ignored++
         return
-      } else if(pageFound && !task.is_deleted && !task_not_updated && !is_project_updated) {
+      } else if(pageFound && !task.is_deleted && task_not_updated && !is_project_updated) {
         // Do Nothing: If Task in todoist is not updated by user after sync via API (When task was updated by API, we strore that time in notion)
         page_ignored++
       }
@@ -81,26 +83,37 @@ function Todoist_To_Notion_Sync() {
         page_updated.push(res)
       }
     })
-    const taskSyncArray = page_created.filter(a => !!a).map(page => {
+
+    // Sync Data back to todoist
+    const taskSyncArray = [];
+    page_created.filter(a => !!a).map(page => {
       let { taskDetails } = page
-      return {
+      taskSyncArray.push({
         taskId: taskDetails.id,
         pageId: page.id,
         url: page.url,
         labels: taskDetails.labels,
         type: "item_update"
-      }
+      })
     })
 
-    if (delete_from_todoist.length) {
-      const taskIdToBeDeleted = delete_from_todoist.filter(a => !!a).map(taskID => {
-        return {
-          taskId: taskID,
-          type: "item_delete"
-        }
+    delete_from_todoist.filter(a => !!a).map(taskID => {
+      taskSyncArray.push({
+        taskId: taskID,
+        type: "item_delete"
       })
-      taskSyncArray.push(...taskIdToBeDeleted)
-    }
+    })
+
+    page_updated.filter(a => !!a).map(page => {
+      let { taskDetails } = page
+      taskSyncArray.push({
+        taskId: taskDetails.id,
+        labels: taskDetails.labels,
+        pageId: page.id,
+        url: page.url,
+        type: "item_update"
+      })
+    })
 
     const syncPayload = Create_sync_payload(taskSyncArray)
     Sync_todoist_operations(syncPayload)
@@ -327,8 +340,9 @@ function Update(page, task, parentPageId) {
     if (response.getResponseCode() !== 200) {
       throw new Error(`Failed to update page in Notion: ${data.message}`);
     }
-
     console.log(`Notion task ${page.id} updated successfully.`);
+    data.taskDetails = task
+    return data
   } catch (error) {
     console.error('Error updating page in Notion:', error.message);
   }
@@ -524,12 +538,13 @@ function Create_sync_payload(taskSyncArray) {
         }
       })
     } else if (task.type === 'item_update') {
+      console.log(task.labels)
       payload.push({
         "type": "item_update",
         "uuid": Utilities.getUuid(),
         "args": {
           id: task.taskId,
-          labels: [...task.labels, "ADDED_TO_NOTION"],
+          labels: !CHECK_SYNC_TAGS(task.labels) ? [...task.labels, "ADDED_TO_NOTION"]: task.labels,
           description: "Notion Link: " + (task.url),
         }
       })
