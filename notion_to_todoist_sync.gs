@@ -67,8 +67,14 @@ function Notion_To_Todoist_Sync() {
         return;
       } else if (!isDone && taskId && isTaskInvalid) {
         // When A task is not completed on Notion, and isTaskInvalid on Todoist
-        const data = Fetch_Todoist_Data_Sync(taskId)
-        if (data && data?.item && data?.item?.is_deleted) {
+        let data
+        try {
+          data = Fetch_Todoist_Data_Sync(taskId)
+        } catch (e) {
+          data = null
+        }
+        
+        if (!data || (data && data?.item && data?.item?.is_deleted)) {
           // DO NOTHING
           return
         } else if (data && data?.item && data.item?.checked) {
