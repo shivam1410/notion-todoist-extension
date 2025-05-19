@@ -1,8 +1,18 @@
+var todoNotionSyncSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Sync");
+const SyncTokenRange = todoNotionSyncSheet.getRange('B1')
+let LastSyncTimeRange = todoNotionSyncSheet.getRange('B3')
+
 function syncFromTodoistToNotion() {
-  for (let i = 0; i < freq; i++) {
+  try {
+    const freq = todoNotionSyncSheet.getRange('B5').getValue() // number of syncs per minute, 5 means sync every 60/5 = 12 seconds
+    if(!freq) throw "No Frequency found in sheet"
+    for (let i = 0; i < freq; i++) {
     function_t_n(i)
     if (i === freq - 1) continue; // Not delaying on the last iteration
     Utilities.sleep(60 * 1000 / freq);
+  }
+  } catch (err) {
+    console.log("Error in syncFromTodoistToNotion", err)
   }
 }
 
@@ -43,7 +53,6 @@ function Todoist_To_Notion_Sync() {
     const page_created = []
     const page_updated = []
     const page_deleted = []
-    const delete_from_todoist = []
     let page_ignored = 0;
     todoist_data.forEach(task => {
       const pageFound = pagesMapByTaskId[task?.id]
@@ -61,8 +70,8 @@ function Todoist_To_Notion_Sync() {
         page_ignored++
       }
       else if (!pageFound && CHECK_SYNC_TAGS(task.labels)) {
-        // Delete those task from todoist that are updated in todoist, after they were removed from Notion
-        delete_from_todoist.push(task.id)
+        // DO Noting: Delete those task from todoist that are updated in todoist, after they were removed from Notion
+        page_ignored++
       } else if (!pageFound && !task.is_deleted && !CHECK_SYNC_TAGS(task.labels)) {
         // Don't create task on notion, if sync label exist on it
         let parentNotionId = null
@@ -93,31 +102,33 @@ function Todoist_To_Notion_Sync() {
         pageId: page.id,
         url: page.url,
         labels: taskDetails.labels,
-        type: "item_update"
+        type: "create"
       })
     })
 
-    delete_from_todoist.filter(a => !!a).map(taskID => {
-      taskSyncArray.push({
-        taskId: taskID,
-        type: "item_delete"
-      })
-    })
+    // Don't Delete the data from todoist, let notion webhook handle it
+    // delete_from_todoist.filter(a => !!a).map(taskID => {
+    //   taskSyncArray.push({
+    //     taskId: taskID,
+    //     type: "item_delete"
+    //   })
+    // })
 
-    page_updated.filter(a => !!a).map(page => {
-      let { taskDetails } = page
-      taskSyncArray.push({
-        taskId: taskDetails.id,
-        labels: taskDetails.labels,
-        pageId: page.id,
-        url: page.url,
-        type: "item_update"
-      })
-    })
+    // Don't update back the data
+    // page_updated.filter(a => !!a).map(page => {
+    //   let { taskDetails } = page
+    //   taskSyncArray.push({
+    //     taskId: taskDetails.id,
+    //     labels: taskDetails.labels,
+    //     pageId: page.id,
+    //     url: page.url,
+    //     type: "update"
+    //   })
+    // })
 
     const syncPayload = Create_sync_payload(taskSyncArray)
     Sync_todoist_operations(syncPayload)
-    if ((page_created.length + page_updated.length + page_deleted.length + page_ignored + delete_from_todoist.length) < todoist_data.length) {
+    if ((page_created.length + page_updated.length + page_deleted.length + page_ignored) < todoist_data.length) {
       throw Error("Error occured")
     }
     Date_string = Utilities.formatDate(new Date(), "IST", 'E, MMM dd yyyy, HH:mm:ss')
@@ -529,15 +540,7 @@ function Create_sync_payload(taskSyncArray) {
   let payload = []
   for (let i = 0; i < taskSyncArray.length; i++) {
     let task = taskSyncArray[i]
-    if (task.type === 'item_delete') {
-      payload.push({
-        "type": "item_delete",
-        "uuid": Utilities.getUuid(),
-        "args": {
-          id: task.taskId,
-        }
-      })
-    } else if (task.type === 'item_update') {
+    if (task.type === 'create') {
       console.log(task.labels)
       payload.push({
         "type": "item_update",
