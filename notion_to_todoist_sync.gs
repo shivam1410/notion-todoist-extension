@@ -1,28 +1,19 @@
-function syncFromNotionToDoist() {
-  for (let i = 0; i < freq; i++) {
-    myFunctionN_T(i);
-    if (i === freq - 1) continue; // Not delaying on the last iteration
-    Utilities.sleep(60 * 1000 / freq);
-  }
-}
-
-function myFunctionN_T(i) {
-  console.log('----------- Notion_To_Todoist_Sync --- ', i, urlfetchExecution);
-  Notion_To_Todoist_Sync()
-}
-
 function Notion_To_Todoist_Sync() {
   try {
+    const Date_string = (new Date()).toISOString() // can't change the format because of issue with re-conversion to is
+
+    // Continue with normal syncing
     let lastSyncTimeStamp = LastSyncTimeRange.getValue();
 
-    let { notion_data, newSyncTimeStamp } = Fetching_Notion_Data(lastSyncTimeStamp)
+    let notion_data = Fetching_Notion_Data(lastSyncTimeStamp)
 
     if (!notion_data) {
+      LastSyncTimeRange.setValue([Date_string])
       return
     }
 
     if (notion_data.length < 1) {
-      LastSyncTimeRange.setValue([newSyncTimeStamp]);
+      LastSyncTimeRange.setValue([Date_string])
       return
     }
 
@@ -32,7 +23,7 @@ function Notion_To_Todoist_Sync() {
     })
 
     if (!notion_data || notion_data.length < 1) {
-      LastSyncTimeRange.setValue([newSyncTimeStamp]);
+      LastSyncTimeRange.setValue([Date_string])
       return
     }
 
@@ -59,11 +50,12 @@ function Notion_To_Todoist_Sync() {
       const isDone = page?.properties?.['Status']?.checkbox
       const isTaskInvalid = (!task || task.is_deleted || task.is_completed)
       notionTaskIdMap[taskId] = page
-
-      if (isDone && isTaskInvalid) {
+      const notion_title = page?.properties?.['Name']?.title?.[0]?.text?.content
+      if ((isDone && isTaskInvalid) || !notion_title) {
         // Do Nothing: When A compelted task in updated on notion
         // Do Nothing: When A task is created in Done state on Notion
         // Do Nothing: When A task is completed on Notion, and isTaskInvalid on Todoist
+        // Do Nothing: if notion_title is empty
         return;
       } else if (!isDone && taskId && isTaskInvalid) {
         // When A task is not completed on Notion, and isTaskInvalid on Todoist
@@ -132,178 +124,9 @@ function Notion_To_Todoist_Sync() {
     }
 
     // Update Last sync time on Sheet
-    LastSyncTimeRange.setValue([newSyncTimeStamp]);
+    LastSyncTimeRange.setValue([Date_string])
   } catch (error) {
     throw new Error(`Error processing Notion To Todoist Sync: ${error?.message}`)
-  }
-}
-
-function Fetching_Notion_Data(lastSyncTimeStamp) {
-  try {
-    const options = {
-      contentType: 'application/json',
-      headers: {
-        'Authorization': `Bearer ${Notion_Token}`,
-        'Notion-Version': '2022-06-28',
-        "Content-Type": "application/json",
-      },
-      muteHttpExceptions: true,
-      payload: JSON.stringify({
-        filter: {
-          "timestamp": "last_edited_time",
-          "last_edited_time": {
-            "on_or_after": new Date(lastSyncTimeStamp).toISOString()
-          }
-        }
-      })
-    }
-
-    const url = `https://api.notion.com/v1/databases/${Database_ID}/query`
-    urlfetchExecution++
-    const response = UrlFetchApp.fetch(url, options)
-    if (response.getResponseCode() == 200) {
-      const data = JSON.parse(response.getContentText())
-      return { notion_data: data.results, newSyncTimeStamp: (new Date()).toISOString() };
-    } else {
-      throw new Error(`Failed to fetch notion data: ${response.getContentText()}`)
-    }
-  } catch (error) {
-    console.error(`Error in fetching notion data is: ${error.message}`)
-    throw new Error(`Error in fetching notion data is: ${error?.message}`)
-  }
-}
-
-function Fetch_Todoist_Data(taskId) {
-  try {
-    const options = {
-      headers: {
-        'Authorization': `Bearer ${Todoist_Token}`
-      },
-      muteHttpExceptions: true
-    };
-
-    const url = `https://api.todoist.com/rest/v2/tasks?ids=${taskId}`
-    urlfetchExecution++
-    const response = UrlFetchApp.fetch(url, options);
-
-    if (response.getResponseCode() === 200) {
-
-      return JSON.parse(response.getContentText());
-    } else {
-      throw new Error(`Failed to fetch Todoist data: ${response.getContentText()}`);
-    }
-  } catch (error) {
-    throw Error('Error in Fetch_Todoist_Data:', error?.message)
-  }
-}
-
-function Fetch_Todoist_Data_Sync(taskId) {
-  try {
-    const options = {
-      headers: {
-        'Authorization': `Bearer ${Todoist_Token}`
-      },
-      muteHttpExceptions: true,
-      payload: { item_id: taskId },
-    };
-
-    const url = `https://api.todoist.com/sync/v9/items/get`
-    urlfetchExecution++
-    const response = UrlFetchApp.fetch(url, options);
-
-    if (response.getResponseCode() === 200) {
-
-      return JSON.parse(response.getContentText());
-    } else {
-      throw new Error(`Failed to fetch Todoist data via sync : ${response.getContentText()}`);
-    }
-  } catch (error) {
-    throw Error('Error in Fetch_Todoist_Data_Sync:', error?.message)
-  }
-}
-
-function Create_Todoist(page) {
-  try {
-    if (!page) {
-      throw new Error("Page object is undefined")
-    }
-
-    const { obj } = Create_todoist_payload_object(page)
-    const options = {
-      method: 'post',
-      contentType: 'application/json',
-      headers: {
-        'Authorization': `Bearer ${Todoist_Token}`,
-        "Content-Type": "application/json"
-      },
-      payload: JSON.stringify(obj),
-    }
-    urlfetchExecution++
-    const response = UrlFetchApp.fetch(Todoist_API, options)
-    const task = JSON.parse(response.getContentText())
-
-    if (response.getResponseCode() != 200) {
-      throw new error(`Failed to create the new todo : `, error.message)
-    }
-
-    console.log(`Task Created with ID: ${task.id} on Todoist Successfully`)
-
-    update_notion_for_create(page.id, task.id)
-  } catch (error) {
-    console.error(error)
-    throw new Error(`Failed to create the new todo : ${error.message}`)
-  }
-}
-
-function Update_Todoist(taskId, payload) {
-  try {
-    const options = {
-      method: 'post',
-      contentType: 'application/json',
-      headers: {
-        'Authorization': `Bearer ${Todoist_Token}`,
-        "Content-Type": "application/json"
-      },
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true
-    }
-
-    const url = `${Todoist_API}/${taskId}`;
-    urlfetchExecution++
-    const response = UrlFetchApp.fetch(url, options)
-
-    if (response.getResponseCode() !== 200) {
-      throw new Error(`Update todoist failed : ${response.getContentText()}`)
-    }
-
-    console.log(`Task with ID: ${taskId} Updated on Todoist Successfully`)
-  } catch (error) {
-    console.log(error)
-    throw new Error(`Failed to update the todo: `, error.message)
-  }
-}
-
-function Sync_todoist_operations(payload) {
-  var options = {
-    "method": "post",
-    "headers": {
-      "Authorization": "Bearer " + Todoist_Token,
-      "Content-Type": "application/json"
-    },
-    "payload": JSON.stringify({
-      commands: payload
-    }),
-    "muteHttpExceptions": true
-  };
-
-  var API_URL = 'https://api.todoist.com/sync/v9/sync';
-  try {
-    var response = UrlFetchApp.fetch(API_URL, options);
-    var status = JSON.parse(response.getContentText())
-    console.log(`Task Sync Successfully`)
-    return status
-  } catch (e) {
-    Logger.log("Error: " + e.toString());
   }
 }
 
@@ -478,98 +301,27 @@ function update_notion_for_update(updatedTasks, notionTaskIdMap, todoistTaskMap)
   }
 }
 
-function update_notion(page) {
-  try {
-    let payload = {
-      "properties": {
-        "Sync timestamp": {
-          "number": +new Date() // When was the task updated on todoist?
-        }
-      }
-    }
-
-    if (page.checked && !page.content.includes("✅ ")) {
-      payload.properties.Name = {
-        title: [
-          {
-            "text": {
-              "content": "✅ " + page.content
-            }
-          }
-        ]
-      }
-    }
-    if (!page.checked && page.content.includes("✅ ")) {
-      payload.properties.Name = {
-        title: [
-          {
-            "text": {
-              "content": page.content.replace("✅ ", "")
-            }
-          }
-        ]
-      }
-    }
-
-    const options = {
-      method: 'patch',
-      contentType: 'application/json',
-      headers: {
-        'Authorization': `Bearer ${Notion_Token}`,
-        'Content-Type': 'application/json',
-        'Notion-Version': '2022-06-28',
-      },
-      payload: JSON.stringify(payload)
-    }
-
-    urlfetchExecution++
-    const response = UrlFetchApp.fetch(`https://api.notion.com/v1/pages/${page.id}`, options)
-    if (response.getResponseCode() != 200) {
-      throw new Error(`Failed to upadate the Notion Page: ${response}`)
-    }
-  } catch (err) {
-    console.error("Error in update_notion", err)
-    throw new Error(`Failed to upadate the Notion Page post todoist sync: ${err?.message}`)
+function DELETE_TASK_FROM_TODOIST() {
+  const lastRow = logsSheet.getLastRow();
+  const lastRowData = logsSheet.getRange(lastRow, 1, 1, logsSheet.getLastColumn()).getValues()[0];
+  if(!delete_page_types.includes(lastRowData[7])) {
+    throw new Error(`DELETE_TASK_FROM_TODOIST: Unexpected event type '${lastRowData[7]}' - expected delete event.`);
   }
-}
-
-function update_notion_for_create(pageId, taskId) {
-  try {
-    let payload = {
-      "properties": {
-        TaskId: {
-          "rich_text": [
-            {
-              "text": {
-                "content": taskId
-              }
-            }
-          ]
-        },
-        "Sync timestamp": {
-          "number": +new Date()
-        }
-      }
-    }
-
-    const options = {
-      method: 'patch',
-      contentType: 'application/json',
-      headers: {
-        'Authorization': `Bearer ${Notion_Token}`,
-        'Content-Type': 'application/json',
-        'Notion-Version': '2022-06-28',
-      },
-      payload: JSON.stringify(payload)
-    }
-
-    urlfetchExecution++
-    const response = UrlFetchApp.fetch(`https://api.notion.com/v1/pages/${pageId}`, options)
-    if (response.getResponseCode() != 200) {
-      throw new Error(`Failed to upadate the Notion Page: ${response}`)
-    }
-  } catch (err) {
-    console.error("Error in update_notion_for_create", err)
-    throw new Error(`Failed to upadate the Notion Page post todoist sync create: ${err?.message}`)
+  const pageId = lastRowData[11]
+  const page = Fetching_Notion_Data_BY_ID(pageId)
+  if(!page) {
+      throw new Error(`DELETE_TASK_FROM_TODOIST: No page found for ID: ${pageId}`);
   }
+  const taskId = page?.properties?.["TaskId"]?.rich_text?.[0]?.text.content.trim()
+  if(!taskId) {
+    throw new Error(`DELETE_TASK_FROM_TODOIST: No TaskId found for page ID: ${pageId}`);
+  }
+  const payload = [{
+    "type": "item_delete",
+    "uuid": Utilities.getUuid(),
+    "args": {
+      id: taskId,
+    }
+  }]
+  Sync_todoist_operations(payload)
 }
