@@ -1,8 +1,8 @@
 const Todoist_Token = '---'
 const Notion_Token = '---'
 const Database_ID = '---'
-const Todoist_API = '---'
-const Notion_API = '---'
+const Todoist_API = 'https://api.todoist.com/rest/v2/tasks'
+const Notion_API = 'https://api.notion.com/v1'
 
 const todoNotionSyncSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Sync");
 const SyncTokenRange = todoNotionSyncSheet.getRange('B1')
