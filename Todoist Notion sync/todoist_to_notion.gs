@@ -14,9 +14,15 @@ function Todoist_To_Notion_Sync() {
     }
 
     // let taskIds = todoist_data.map(task => task.id)
-    let taskIds = [...new Set(todoist_data.flatMap(task => 
-      task.parent_id ? [task.id, task.parent_id] : [task.id]
-    ))];
+    const latest100Tasks = [...todoist_data]
+      .sort((a, b) => new Date(b.added_at) - new Date(a.added_at))
+      .slice(0, 100)
+
+    const taskIds = [...new Set(
+      latest100Tasks.flatMap(task =>
+        task.parent_id ? [task.id, task.parent_id] : [task.id]
+      )
+    )]
 
     const pages = Fetch_notion_pages_by_taskIds(taskIds);
 
@@ -128,7 +134,7 @@ function Create_object_task_for_notion(task, isUpdate = false) {
         "title": [
           {
             "text": {
-              "content": task.checked ? "✅ " + task.content : task.content
+              "content": task.content
             }
           }
         ]
@@ -149,10 +155,8 @@ function Create_object_task_for_notion(task, isUpdate = false) {
         ]
       },
       "Status": {
-        "type": "status",
-          "status": {
-            "name":  task?.checked ? "Done": "Todo"
-          }
+        "type": "checkbox",
+        "checkbox": task?.checked
       },
       "Project": {
         "type": "select",
