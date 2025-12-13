@@ -47,7 +47,7 @@ function Notion_To_Todoist_Sync() {
     Object.values(notion_data).forEach(page => {
       const taskId = page?.properties?.["TaskId"]?.rich_text?.[0]?.text.content.trim()
       const task = todoistTaskMap[taskId]
-      const isDone = page?.properties?.['Status']?.status?.name === "Done"
+      const isDone = page?.properties?.['Status']?.checkbox
       const isTaskInvalid = (!task || task.is_deleted || task.is_completed)
       notionTaskIdMap[taskId] = page
       const notion_title = page?.properties?.['Name']?.title?.[0]?.text?.content
@@ -196,9 +196,6 @@ function Create_todoist_payload_object(page, isUpdate, pastTask) {
   } else {
     if (isUpdate) {
       content = pastTask.content
-      if (page?.properties?.['Status']?.status?.name !== "Done") {
-        content = content.includes("✅ ") ? content.replace("✅ ", "") : content
-      }
     } else {
       content = "New Notion Task"
     }
@@ -227,8 +224,8 @@ function Create_todoist_payload_object(page, isUpdate, pastTask) {
     payload.labels = ["ADDED_FROM_NOTION"];
   }
   
-  if (page?.properties?.['Status'] && page?.properties?.['Status']?.status?.name)
-    payload.is_completed = page?.properties?.['Status']?.status?.name === "Done"
+  if (page?.properties?.['Status'] && page?.properties?.['Status']?.checkbox)
+    payload.is_completed = page?.properties?.['Status']?.checkbox
 
   const projectName = page?.properties?.['Project']?.select?.name;
   const newProjectId = projectName ? projectNameIdMap[projectName] : projectNameIdMap["Inbox"];
