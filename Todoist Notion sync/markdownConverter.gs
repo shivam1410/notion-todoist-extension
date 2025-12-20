@@ -1,4 +1,3 @@
-/* Not Used */
 function markdownToNotionPayload(markdownText) {
     // Define regex patterns
     const patterns = {

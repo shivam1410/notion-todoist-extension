@@ -39,9 +39,9 @@ function Sync_todoist_operations(payload) {
   var API_URL = 'https://api.todoist.com/sync/v9/sync';
   try {
     var response = UrlFetchApp.fetch(API_URL, options);
-    var status = JSON.parse(response.getContentText())
+    var data = JSON.parse(response.getContentText())
     console.log(`Task Sync Successfully`)
-    return status
+    return data
   } catch (e) {
     Logger.log("Error: " + e.toString());
   }
@@ -91,7 +91,7 @@ function Fetch_Todoist_Sync_Data(syncToken) {
       muteHttpExceptions: true
     };
 
-    const url = "https://api.todoist.com/sync/v9/sync"
+    const url = "https://api.todoist.com/sync/v9/sync?limit=10"
 
     urlfetchExecution++
     const response = UrlFetchApp.fetch(url, options);

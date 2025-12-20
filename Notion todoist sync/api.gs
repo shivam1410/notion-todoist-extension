@@ -48,7 +48,9 @@ function doPost(e) {
     }
     else if (!isDeleteType && lastSyncTime < fifteenMinutesEarlier) {
       // 15 minute sync
-      ScriptApp.newTrigger("syncFromNotionToDoist")
+      const triggerName = "syncFromNotionToDoist";
+      discardAllTriggers(triggerName)
+      ScriptApp.newTrigger(triggerName)
         .timeBased()
         .after(1)
         .create();

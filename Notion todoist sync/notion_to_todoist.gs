@@ -232,10 +232,16 @@ function Create_todoist_payload_object(page, isUpdate, pastTask) {
   if (newProjectId !== pastTask?.project_id)
     payload.project_id = newProjectId
 
+  // Only add Notion link if it doesn't already exist (simple and fast check)
+  const currentNotionLink = page.url;
+  const expectedNotionLink = "Notion Link - " + currentNotionLink;
+  
+  const notionLink = "Notion Link - " + (page.url)
+
   if (!pastTask.description) {
-    payload.description = "Notion Link - " + (page.url)
+    payload.description = notionLink
   } else {
-    payload.description = !pastTask.description?.includes("Notion Link") ? "Notion Link - " + (page.url) + "\n" + pastTask.description : pastTask.description
+    payload.description = pastTask.description?.includes("Notion Link") ? pastTask.description : notionLink + "\n" + pastTask.description;
   }
 
 

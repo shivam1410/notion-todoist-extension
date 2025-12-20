@@ -43,14 +43,28 @@ function Todoist_To_Notion_Sync() {
       const is_project_updated = pageFound && projectIDNameMap[task?.project_id] === pageFound?.properties["Project"]?.select?.name ? false: true
 
       const task_not_updated = pageFound && Math.abs(+new Date(task.updated_at) - pageFound?.properties["Sync timestamp"].number) < 1000 ? true: false
+      
+      // Check if this is a recurring task
+      const isRecurring = task?.due?.is_recurring === true;
+      const isRecurringInNotion = pageFound && pageFound?.properties?.["Recurring"]?.select?.name !== null && pageFound?.properties?.["Recurring"]?.select?.name !== undefined;
+      const isCompletedInNotion = pageFound && pageFound?.properties?.["Status"]?.checkbox === true;
+      
+      // For recurring tasks, always allow updates regardless of task_not_updated
+      // This handles new recurring instances
+      const shouldUpdateRecurring = isRecurring && pageFound && (
+        (isRecurringInNotion && isCompletedInNotion) || // Case 1: Notion recurring + checked
+        (!isRecurringInNotion) // Case 2 & 3: Notion not recurring (checked or unchecked)
+      );
 
       if (!pageFound && (task.is_deleted || task.checked)) {
         // Do Nothing: If Task is deleted or completed in todoist, and was removed from notion
         page_ignored++
         return
-      } else if(pageFound && !task.is_deleted && task_not_updated && !is_project_updated) {
+      } else if(pageFound && !task.is_deleted && task_not_updated && !is_project_updated && !shouldUpdateRecurring) {
+        // Skip if task hasn't been updated and it's not a recurring task that needs updating
         // Do Nothing: If Task in todoist is not updated by user after sync via API (When task was updated by API, we strore that time in notion)
         page_ignored++
+        return
       }
       else if (!pageFound && CHECK_SYNC_TAGS(task.labels)) {
         // DO Noting: Delete those task from todoist that are updated in todoist, after they were removed from Notion
@@ -73,10 +87,13 @@ function Todoist_To_Notion_Sync() {
         if(task.parent_id) {
           parentNotionId = pages[task.parent_id]
         }
-        const taskObject = Create_object_task_for_notion(task, true)
+        const taskObject = Create_object_task_for_notion(task, true, pageFound)
+        
         const res = Update(pageFound, parentNotionId, taskObject)
-        res.taskDetails = task
-        page_updated.push(res)
+        if (res) {
+          res.taskDetails = task
+          page_updated.push(res)
+        }
       }
     })
 
@@ -117,7 +134,7 @@ function Todoist_To_Notion_Sync() {
     const syncPayload = Create_sync_payload(taskSyncArray)
     Sync_todoist_operations(syncPayload)
     if ((page_created.length + page_updated.length + page_deleted.length + page_ignored) < todoist_data.length) {
-      throw Error("Error occured")
+      throw Error("Error occured - Page count missmatch")
     }
     Date_string = Utilities.formatDate(new Date(), "IST", 'E, MMM dd yyyy, HH:mm:ss')
     LastSyncTimeRange.setValue([Date_string])
@@ -127,7 +144,7 @@ function Todoist_To_Notion_Sync() {
   }
 }
 
-function Create_object_task_for_notion(task, isUpdate = false) {
+function Create_object_task_for_notion(task, isUpdate = false, pageFound = null) {
   const data = {
     "properties": {
       "Name": {
@@ -165,6 +182,33 @@ function Create_object_task_for_notion(task, isUpdate = false) {
         }
       }
     },
+  }
+  
+  // Handle recurring task status updates
+  const isRecurring = task?.due?.is_recurring === true;
+  const isRecurringInNotion = pageFound && pageFound?.properties?.["Recurring"]?.select?.name !== null && pageFound?.properties?.["Recurring"]?.select?.name !== undefined;
+  const isCompletedInNotion = pageFound && pageFound?.properties?.["Status"]?.checkbox === true;
+  
+  if (isRecurring && pageFound && isUpdate) {
+    if (isRecurringInNotion && isCompletedInNotion) {
+      // Case 1: Notion task is recurring and checked → Update to unchecked + new date
+      data.properties["Status"] = {
+        "type": "checkbox",
+        "checkbox": false
+      };
+      console.log(`Updating recurring task ${task.content} - unchecking status for new instance`);
+    } else if (!isRecurringInNotion && isCompletedInNotion) {
+      // Case 2: Notion task is NOT recurring and checked → Update to unchecked + new date + recurring details
+      data.properties["Status"] = {
+        "type": "checkbox",
+        "checkbox": false
+      };
+      console.log(`Converting non-recurring task ${task.content} to recurring - unchecking status`);
+    } else if (!isRecurringInNotion && !isCompletedInNotion) {
+      // Case 3: Notion task is NOT recurring and unchecked → Update date + recurring details
+      // Status remains as is (already set above from task?.checked)
+      console.log(`Converting non-recurring task ${task.content} to recurring - updating date`);
+    }
   }
 
   if (!isUpdate && task.description) {
@@ -240,6 +284,25 @@ function Create_object_task_for_notion(task, isUpdate = false) {
       "number": +new Date(task.updated_at)
     }
   }
+
+  // Store recurring pattern in dropdown/select property
+  // If task is recurring, store the pattern from due.string (e.g., "Every day", "Every week")
+  // If not recurring, leave it empty (null)
+  if (task?.due?.is_recurring === true && task?.due?.string) {
+    data.properties["Recurring"] = {
+      "type": "select",
+      "select": {
+        "name": task.due.string
+      }
+    }
+  } else {
+    // Explicitly set to null if not recurring
+    data.properties["Recurring"] = {
+      "type": "select",
+      "select": null
+    }
+  }
+
   return data
 }
 

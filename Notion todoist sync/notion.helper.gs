@@ -66,29 +66,6 @@ function update_notion(page) {
       }
     }
 
-    if (page.checked && !page.content.includes("✅ ")) {
-      payload.properties.Name = {
-        title: [
-          {
-            "text": {
-              "content": "✅ " + page.content
-            }
-          }
-        ]
-      }
-    }
-    if (!page.checked && page.content.includes("✅ ")) {
-      payload.properties.Name = {
-        title: [
-          {
-            "text": {
-              "content": page.content.replace("✅ ", "")
-            }
-          }
-        ]
-      }
-    }
-
     const options = {
       method: 'patch',
       contentType: 'application/json',
