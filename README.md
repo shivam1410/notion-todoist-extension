@@ -107,10 +107,10 @@ The system uses webhooks for real-time updates and scheduled triggers for period
 - `PATCH /v1/pages/{page_id}` - Update page properties (TaskId, Sync timestamp)
 
 #### Todoist APIs
-- `POST /rest/v2/tasks` - Create new task (REST API)
-- `POST /rest/v2/tasks/{task_id}` - Update task (REST API, for duration)
-- `GET /rest/v2/tasks?ids={task_ids}` - Fetch multiple tasks by IDs (REST API)
-- `POST /sync/v9/sync` - Batch operations (Sync API)
+- `POST /api/v1/tasks` - Create new task (REST API)
+- `POST /api/v1/tasks/{task_id}` - Update task (REST API, for duration)
+- `GET /api/v1/tasks?ids={task_ids}` - Fetch multiple tasks by IDs (REST API)
+- `POST /api/v1/sync` - Batch operations (Sync API)
   - Commands: `item_update`, `item_close`, `item_uncomplete`, `item_move`
 - `POST /sync/v9/items/get` - Get task details (Sync API)
 
@@ -241,8 +241,8 @@ Notion todoist sync/
 ### APIs Used
 
 #### Todoist APIs
-- `POST /sync/v9/sync` - Fetch changed items (with sync token)
-- `POST /sync/v9/sync` - Batch update operations
+- `POST /api/v1/sync` - Fetch changed items (with sync token)
+- `POST /api/v1/sync` - Batch update operations
   - Commands: `item_update` (for labels, descriptions)
 
 #### Notion APIs
@@ -332,18 +332,18 @@ notion-todoist-extension/
 #### REST API v2
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/rest/v2/tasks` | POST | Create new task |
-| `/rest/v2/tasks/{task_id}` | POST | Update task (duration) |
-| `/rest/v2/tasks?ids={task_ids}` | GET | Fetch multiple tasks |
-| `/rest/v2/tasks/{task_id}` | DELETE | Delete task |
-| `/rest/v2/projects/` | GET | List projects |
-| `/rest/v2/labels` | GET | List labels |
+| `/api/v1/tasks` | POST | Create new task |
+| `/api/v1/tasks/{task_id}` | POST | Update task (duration) |
+| `/api/v1/tasks?ids={task_ids}` | GET | Fetch multiple tasks |
+| `/api/v1/tasks/{task_id}` | DELETE | Delete task |
+| `/api/v1/projects/` | GET | List projects |
+| `/api/v1/labels` | GET | List labels |
 
 #### Sync API v9
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/sync/v9/sync` | POST | Batch operations (create, update, delete) |
-| `/sync/v9/sync?limit=10` | GET | Fetch changed items (with sync token) |
+| `/api/v1/sync` | POST | Batch operations (create, update, delete) |
+| `/api/v1/sync?limit=10` | GET | Fetch changed items (with sync token) |
 | `/sync/v9/items/get` | POST | Get specific item details |
 
 ### Sync API Commands

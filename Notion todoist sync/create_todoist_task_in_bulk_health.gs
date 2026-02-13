@@ -1,3 +1,4 @@
+/* NOT_USED_IN_SCRIPT */ 
 function myFunction() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Sheet3");
   const dataRange = sheet.getRange('A1:E40');
@@ -36,6 +37,7 @@ function myFunction() {
 }
 
 
+/* NOT_USED_IN_SCRIPT */ 
 function Todoist(todo) {
   try {
     const options = {

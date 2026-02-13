@@ -1,4 +1,4 @@
-function Fetch_Todoist_Data(taskId) {
+function Fetch_Todoist_Data_By_Ids(taskIds) {
   try {
     const options = {
       headers: {
@@ -7,7 +7,7 @@ function Fetch_Todoist_Data(taskId) {
       muteHttpExceptions: true
     };
 
-    const url = `https://api.todoist.com/rest/v2/tasks?ids=${taskId}`
+    const url = `${Todoist_API}?ids=${taskIds}`
     urlfetchExecution++
     const response = UrlFetchApp.fetch(url, options);
 
@@ -18,39 +18,31 @@ function Fetch_Todoist_Data(taskId) {
       throw new Error(`Failed to fetch Todoist data: ${response.getContentText()}`);
     }
   } catch (error) {
-    throw Error('Error in Fetch_Todoist_Data:', error?.message)
+    throw Error('Error in Fetch_Todoist_Data_By_Ids:', error?.message)
   }
 }
 
-function Fetch_Todoist_Data_Sync(taskId) {
+function Fetch_Todoist_Data_By_Id(taskId) {
   try {
     const options = {
       headers: {
         'Authorization': `Bearer ${Todoist_Token}`
       },
-      muteHttpExceptions: true,
-      payload: { item_id: taskId },
+      muteHttpExceptions: true
     };
 
-    const url = `https://api.todoist.com/sync/v9/items/get`
+    const url = `${Todoist_API}/${taskId}`
     urlfetchExecution++
     const response = UrlFetchApp.fetch(url, options);
 
     if (response.getResponseCode() === 200) {
-      const data = JSON.parse(response.getContentText());
-      // Notes are already included in the Sync API response
-      // Attach notes directly to the item object
-      if (data.item && data.notes) {
-        data.item.notes = data.notes || [];
-      } else if (data.item) {
-        data.item.notes = [];
-      }
-      return data;
+
+      return JSON.parse(response.getContentText());
     } else {
-      throw new Error(`Failed to fetch Todoist data via sync : ${response.getContentText()}`);
+      throw new Error(`Failed to fetch Todoist data: ${response.getContentText()}`);
     }
   } catch (error) {
-    throw Error('Error in Fetch_Todoist_Data_Sync:', error?.message)
+    throw Error('Error in Fetch_Todoist_Data_By_Id:', error?.message)
   }
 }
 
@@ -170,7 +162,7 @@ function Sync_todoist_operations(payload) {
     "muteHttpExceptions": true
   };
 
-  var API_URL = 'https://api.todoist.com/sync/v9/sync';
+  var API_URL = Todoist_SYNC_API;
   try {
     var response = UrlFetchApp.fetch(API_URL, options);
     var status = JSON.parse(response.getContentText())
@@ -178,5 +170,6 @@ function Sync_todoist_operations(payload) {
     return status
   } catch (e) {
     Logger.log("Error: " + e.toString());
+    throw e;
   }
 }

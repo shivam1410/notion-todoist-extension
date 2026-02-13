@@ -62,6 +62,7 @@ function myFunctionN_T(i) {
   }
 }
 
+/* NOT_USED_IN_SCRIPT */ 
 function test () {
   console.log(new Date())
   console.log(new Date(Date.now() + 100))

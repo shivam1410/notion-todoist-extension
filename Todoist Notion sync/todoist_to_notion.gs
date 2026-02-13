@@ -36,51 +36,51 @@ function Todoist_To_Notion_Sync() {
     const page_deleted = []
     let page_ignored = 0;
     todoist_data.forEach(task => {
-      const pageFound = pagesMapByTaskId[task?.id]
+      const notionPage = pagesMapByTaskId[task?.id]
       // Notes are now stored directly in task.notes
 
-      const is_project_updated = pageFound && projectIDNameMap[task?.project_id] === pageFound?.properties["Project"]?.select?.name ? false: true
+      const is_project_updated = notionPage && projectIDNameMap[task?.project_id] === notionPage?.properties["Project"]?.select?.name ? false: true
 
-      const task_not_updated = pageFound && Math.abs(+new Date(task.updated_at) - pageFound?.properties["Sync timestamp"].number) < 1000 ? true: false
+      const task_not_updated = notionPage && Math.abs(+new Date(task.updated_at) - notionPage?.properties["Sync timestamp"].number) < 1000 ? true: false
       
       // Check if this is a recurring task
       const isRecurring = task?.due?.is_recurring === true;
-      const isRecurringInNotion = pageFound && pageFound?.properties?.["Recurring"]?.select?.name !== null && pageFound?.properties?.["Recurring"]?.select?.name !== undefined;
-      const isCompletedInNotion = pageFound && pageFound?.properties?.["Status"]?.checkbox === true;
+      const isRecurringInNotion = notionPage && notionPage?.properties?.["Recurring"]?.select?.name !== null && notionPage?.properties?.["Recurring"]?.select?.name !== undefined;
+      const isCompletedInNotion = notionPage && notionPage?.properties?.["Status"]?.checkbox === true;
       
       // For recurring tasks, always allow updates regardless of task_not_updated
       // This handles new recurring instances
-      const shouldUpdateRecurring = isRecurring && pageFound && (
+      const shouldUpdateRecurring = isRecurring && notionPage && (
         (isRecurringInNotion && isCompletedInNotion) || // Case 1: Notion recurring + checked
         (!isRecurringInNotion) // Case 2 & 3: Notion not recurring (checked or unchecked)
       );
 
-      if (!pageFound && (task.is_deleted || task.checked)) {
+      if (!notionPage && (task.is_deleted || task.checked)) {
         // Do Nothing: If Task is deleted or completed in todoist, and was removed from notion
         page_ignored++
         return
-      } else if(pageFound && !task.is_deleted && task_not_updated && !is_project_updated && !shouldUpdateRecurring) {
+      } else if(notionPage && !task.is_deleted && task_not_updated && !is_project_updated && !shouldUpdateRecurring) {
         // Skip if task hasn't been updated and it's not a recurring task that needs updating
         // Do Nothing: If Task in todoist is not updated by user after sync via API (When task was updated by API, we strore that time in notion)
         page_ignored++
         return
       }
-      else if (!pageFound && CHECK_SYNC_COMMENTS(task.notes || [])) {
-        // DO Nothing: Skip tasks that have sync comments (were synced from Notion)
+      else if (!notionPage && CHECK_SYNC_COMMENTS(task?.notes)) {
+        // DO Nothing: Page is deleted on notion and have a sync comment on todoist task
         page_ignored++
-      } else if (!pageFound && !task.is_deleted && !CHECK_SYNC_COMMENTS(task.notes || [])) {
+      } else if (!notionPage && !task.is_deleted && !CHECK_SYNC_COMMENTS(task?.notes)) {
         // Create task on notion if it doesn't exist and doesn't have sync comments
         const taskObject = Create_object_task_for_notion(task)
         const page = Create(taskObject);
         page.taskDetails = task
         page_created.push(page)
-      } else if (pageFound && task.is_deleted) {
-        const res = Delete_page(pageFound)
+      } else if (notionPage && task.is_deleted) {
+        const res = Delete_page(notionPage)
         page_deleted.push(res)
       } else {
-        const taskObject = Create_object_task_for_notion(task, true, pageFound)
+        const taskObject = Create_object_task_for_notion(task, true, notionPage)
         
-        const res = Update(pageFound, taskObject)
+        const res = Update(notionPage, taskObject)
         if (res) {
           res.taskDetails = task
           page_updated.push(res)
@@ -98,7 +98,7 @@ function Todoist_To_Notion_Sync() {
         url: page.url,
         labels: taskDetails.labels,
         description: taskDetails.description,
-        notes: taskDetails.notes || [],
+        notes: [],
         type: "create"
       })
     })
@@ -136,7 +136,7 @@ function Todoist_To_Notion_Sync() {
   }
 }
 
-function Create_object_task_for_notion(task, isUpdate = false, pageFound = null) {
+function Create_object_task_for_notion(task, isUpdate = false, notionPage = null) {
   const data = {
     "properties": {
       "Name": {
@@ -201,10 +201,10 @@ function Create_object_task_for_notion(task, isUpdate = false, pageFound = null)
   
   // Handle recurring task status updates
   const isRecurring = task?.due?.is_recurring === true;
-  const isRecurringInNotion = pageFound && pageFound?.properties?.["Recurring"]?.select?.name !== null && pageFound?.properties?.["Recurring"]?.select?.name !== undefined;
-  const isCompletedInNotion = pageFound && pageFound?.properties?.["Status"]?.checkbox === true;
+  const isRecurringInNotion = notionPage && notionPage?.properties?.["Recurring"]?.select?.name !== null && notionPage?.properties?.["Recurring"]?.select?.name !== undefined;
+  const isCompletedInNotion = notionPage && notionPage?.properties?.["Status"]?.checkbox === true;
   
-  if (isRecurring && pageFound && isUpdate) {
+  if (isRecurring && notionPage && isUpdate) {
     if (isRecurringInNotion && isCompletedInNotion) {
       // Case 1: Notion task is recurring and checked → Update to unchecked + new date
       data.properties["Status"] = {
@@ -326,24 +326,18 @@ function Create_sync_payload(taskSyncArray) {
   for (let i = 0; i < taskSyncArray.length; i++) {
     let task = taskSyncArray[i]
     if (task.type === 'create') {
-      // Check if sync comment already exists
-      const hasSyncComment = task.notes && CHECK_SYNC_COMMENTS(task.notes);
-      
-      // Add comment instead of label if sync comment doesn't exist
-      if (!hasSyncComment) {
-        payload.push({
-          "type": "note_add",
-          "temp_id": Utilities.getUuid(),
-          "uuid": Utilities.getUuid(),
-          "args": {
-            item_id: task.taskId,
-            content: "ADDED_TO_NOTION"
-          }
-        })
-      }
+      payload.push({
+        "type": "note_add",
+        "temp_id": Utilities.getUuid(),
+        "uuid": Utilities.getUuid(),
+        "args": {
+          item_id: task.taskId,
+          content: "ADDED_TO_NOTION"
+        }
+      })
       
       // Update description (keep labels as they are, don't add sync labels)
-      if (!task.description || !task.description.includes("Notion Link")) {
+      if (!(task?.description && task?.description?.includes("Notion Link"))) {
         payload.push({
           "type": "item_update",
           "uuid": Utilities.getUuid(),

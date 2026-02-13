@@ -31,7 +31,7 @@ function Notion_To_Todoist_Sync() {
       .map(page => page?.properties?.["TaskId"]?.rich_text?.[0]?.text.content.trim())
       .filter(a => !!a)
 
-    const todoistTasks = Fetch_Todoist_Data(taskIds)
+    const todoistTasks = Fetch_Todoist_Data_By_Ids(taskIds)
 
     const todoistTaskMap = todoistTasks.reduce((map, task) => {
       map[task.id] = task
@@ -58,10 +58,11 @@ function Notion_To_Todoist_Sync() {
         // Do Nothing: if notion_title is empty
         return;
       } else if (!isDone && taskId && isTaskInvalid) {
-        // When A task is not completed on Notion, and isTaskInvalid on Todoist
+        // When A task is not completed on Notion, and isTaskInvalid on Todoist, 
+        // reopen the task on todoist id task is not deleted and jsut completed
         let data
         try {
-          data = Fetch_Todoist_Data_Sync(taskId)
+          data = Fetch_Todoist_Data_By_Id(taskId)
         } catch (e) {
           data = null
         }
@@ -78,9 +79,6 @@ function Notion_To_Todoist_Sync() {
           }
           payload.push(syncPayload)
         }
-        // if (data && data.item) {
-        //   todoistTaskMap[taskId] = { ...todoistTaskMap[taskId], ...data.item };
-        // }
         return;
       }
       else if (taskId && !isTaskInvalid) {
@@ -138,17 +136,17 @@ function Notion_To_Todoist_Sync() {
 
 function Create_update_payload(page, task) {
   let payload = []
-  let { obj, durationPayload, addSyncComment } = Create_todoist_payload_object(page, true, task)
+  let { obj, durationPayload, syncComment } = Create_todoist_payload_object(page, true, task)
   
   // Add sync comment if needed
-  if (addSyncComment) {
+  if (syncComment) {
     payload.push({
       "type": "note_add",
       "temp_id": Utilities.getUuid(),
       "uuid": Utilities.getUuid(),
       "args": {
         item_id: task.id,
-        content: "ADDED_FROM_NOTION"
+        content: syncComment
       }
     })
   }
@@ -237,7 +235,7 @@ function Create_todoist_payload_object(page, isUpdate, pastTask) {
       description: "Notion Link - " + (page.url),
       due_date: due_date ? due_date : undefined,
     }
-    return { obj: payload, addSyncComment: true } // Flag to add comment after creation
+    return { obj: payload, syncComment: "ADDED_FROM_NOTION" } // Flag to add comment after creation
   }
 
   // For Updating Data, Create Payload, that will be utilised by SYNC API
@@ -246,9 +244,7 @@ function Create_todoist_payload_object(page, isUpdate, pastTask) {
   const notionLabels = page?.properties?.['Labels']?.multi_select?.map(label => label.name) || [];
   payload.labels = notionLabels
 
-  if (!CHECK_SYNC_COMMENTS(pastTask.notes)) {
-    payload.addSyncComment = true; // Flag to add comment
-  }
+  payload.syncComment = "UPTDATED_FROM_NOTION"; // Flag to add comment
   
   if (page?.properties?.['Status'] && page?.properties?.['Status']?.checkbox)
     payload.is_completed = page?.properties?.['Status']?.checkbox

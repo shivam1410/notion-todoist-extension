@@ -1,3 +1,4 @@
+/* NOT_USED_IN_SCRIPT */ 
 function Delete_task(task) {
   // getting task id 
   const task_id = task?.id
@@ -25,18 +26,22 @@ function Delete_task(task) {
 
 
 function Sync_todoist_operations(payload) {
+  // Sync API requires form-encoded data, not JSON
+  const formData = {
+    'commands': JSON.stringify(payload)
+  };
+  
   var options = {
     "method": "post",
     "headers": {
-      "Authorization": "Bearer " + Todoist_Token,
-      "Content-Type": "application/json"
+      "Authorization": "Bearer " + Todoist_Token
+      // Don't set Content-Type - UrlFetchApp will set it for form data
     },
-    "payload": JSON.stringify({
-      commands: payload
-    }),
+    "payload": formData,
+    "muteHttpExceptions": true
   };
 
-  var API_URL = 'https://api.todoist.com/sync/v9/sync';
+  var API_URL = Todoist_SYNC_API;
   try {
     var response = UrlFetchApp.fetch(API_URL, options);
     var data = JSON.parse(response.getContentText())
@@ -44,9 +49,11 @@ function Sync_todoist_operations(payload) {
     return data
   } catch (e) {
     Logger.log("Error: " + e.toString());
+    throw e;
   }
 }
 
+/* NOT_USED_IN_SCRIPT */ 
 function Get_todoist_projects(id) {
     const options = {
         method: 'get',
@@ -55,7 +62,7 @@ function Get_todoist_projects(id) {
         },
       };
 
-  const url = `https://api.todoist.com/rest/v2/projects/`;
+  const url = `${Todoist_API_BASE}/projects/`;
     const response = UrlFetchApp.fetch(url, options);
     const data = JSON.parse(response.getContentText());
     console.log(data)
@@ -65,6 +72,7 @@ function Get_todoist_projects(id) {
 }
 
 
+/* NOT_USED_IN_SCRIPT */ 
 function get_labels() {
   const option = {
     method: "get",
@@ -73,25 +81,27 @@ function get_labels() {
     }
   }
   urlfetchExecution++
-  UrlFetchApp.fetch(`https://api.todoist.com/rest/v2/labels`, option)
+  UrlFetchApp.fetch(`${Todoist_API_BASE}/labels`, option)
 }
 
 function Fetch_Todoist_Sync_Data(syncToken) {
   try {
-    const query = {
+    // Sync API requires POST with form-encoded data
+    const formData = {
       sync_token: syncToken ? syncToken : '*',
-      resource_types: '["items", "notes"]'
+      resource_types: JSON.stringify(["items", "notes"]) // Proper JSON array
     };
+    
     const options = {
-      method: 'get',
+      method: 'post',
       headers: {
         'Authorization': `Bearer ${Todoist_Token}`
       },
-      "payload": query,
+      payload: formData, // Form-encoded, not JSON
       muteHttpExceptions: true
     };
 
-    const url = "https://api.todoist.com/sync/v9/sync?limit=10"
+    const url = Todoist_SYNC_API
 
     urlfetchExecution++
     const response = UrlFetchApp.fetch(url, options);
@@ -123,6 +133,7 @@ function Fetch_Todoist_Sync_Data(syncToken) {
   }
 }
 
+/* NOT_USED_IN_SCRIPT */ 
 function update_labels(task) {
   // id lo 
   const labels = task?.labels;
@@ -151,7 +162,7 @@ function update_labels(task) {
       })
     }
     urlfetchExecution++
-    const response_new = UrlFetchApp.fetch(`https://api.todoist.com/rest/v2/labels`, option)
+    const response_new = UrlFetchApp.fetch(`${Todoist_API_BASE}/labels`, option)
     const response_data = response_new.getContentText()
   } catch (error) {
     throw new Error("Failed to update the labels")

@@ -1,7 +1,9 @@
 const Todoist_Token = '---'
 const Notion_Token = '---'
 const Database_ID = '---'
-const Todoist_API = 'https://api.todoist.com/rest/v2/tasks'
+const Todoist_API_BASE = 'https://api.todoist.com/api/v1'
+const Todoist_API = 'https://api.todoist.com/api/v1/tasks'
+const Todoist_SYNC_API = 'https://api.todoist.com/api/v1/sync'
 const Notion_API = 'https://api.notion.com/v1'
 
 const todoNotionSyncSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Sync");
@@ -19,12 +21,12 @@ const priorityIdMap = {
 }
 
 const projectNameIdMap = {
-  'Inbox': '---',
-  'Work': '---',
-  'Personal': '---',
-  'Grocery': '---',
-  'Notes': '---',
-  'Health': '---',
+  'Inbox': '6CrfGxHWw6WWrF9X',
+  'Work': '6Vm6wXxWFJ3XH94q',
+  'Personal': '6VmMgwFrVJhq2395',
+  'Grocery': '6WjFJwj8vmW5hpw4',
+  'Notes': '6X63WqwQX5fFWW38',
+  'Health': '6c4v5CqxgprwG3QR',
 }
 
 const users = {
@@ -42,12 +44,12 @@ const priorityMap = {
 }
 
 const projectIDNameMap = {
-  "---": 'Inbox',
-  "---": 'Work',
-  "---": 'Personal',
-  "---": 'Grocery',
-  "---": 'Notes',
-  "---": 'Health'
+  "6CrfGxHWw6WWrF9X": 'Inbox',
+  "6Vm6wXxWFJ3XH94q": 'Work',
+  "6VmMgwFrVJhq2395": 'Personal',
+  "6WjFJwj8vmW5hpw4": 'Grocery',
+  "6X63WqwQX5fFWW38": 'Notes',
+  "6c4v5CqxgprwG3QR": 'Health'
 }
 
 const SYNC_LABELS = ["ADDED_TO_NOTION", "ADDED_FROM_NOTION"]
