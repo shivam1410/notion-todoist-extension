@@ -37,13 +37,52 @@ function Fetch_Todoist_Data_Sync(taskId) {
     const response = UrlFetchApp.fetch(url, options);
 
     if (response.getResponseCode() === 200) {
-
-      return JSON.parse(response.getContentText());
+      const data = JSON.parse(response.getContentText());
+      // Notes are already included in the Sync API response
+      // Attach notes directly to the item object
+      if (data.item && data.notes) {
+        data.item.notes = data.notes || [];
+      } else if (data.item) {
+        data.item.notes = [];
+      }
+      return data;
     } else {
       throw new Error(`Failed to fetch Todoist data via sync : ${response.getContentText()}`);
     }
   } catch (error) {
     throw Error('Error in Fetch_Todoist_Data_Sync:', error?.message)
+  }
+}
+
+function Add_sync_comment(taskId, content = "ADDED_FROM_NOTION") {
+  try {
+    const commentUuid = Utilities.getUuid();
+    const commentPayload = [{
+      "type": "note_add",
+      "temp_id": Utilities.getUuid(),
+      "uuid": commentUuid,
+      "args": {
+        item_id: taskId,
+        content: content
+      }
+    }];
+    
+    urlfetchExecution++
+    const response = Sync_todoist_operations(commentPayload);
+    
+    if (!response || !response.sync_status) {
+      throw new Error("Failed to add sync comment: Invalid response from Sync API");
+    }
+    
+    if (response.sync_status[commentUuid] !== "ok") {
+      throw new Error(`Failed to add sync comment: ${JSON.stringify(response.sync_status[commentUuid])}`);
+    }
+    
+    console.log(`Sync comment added to task ${taskId} successfully`);
+    return true;
+  } catch (error) {
+    console.error(`Failed to add sync comment to task ${taskId}:`, error.message);
+    throw new Error(`Failed to add sync comment: ${error.message}`);
   }
 }
 
@@ -72,6 +111,17 @@ function Create_Todoist(page) {
     }
 
     console.log(`Task Created with ID: ${task.id} on Todoist Successfully`)
+    
+    // Add sync comment after task creation
+    if (task && task.id) {
+      try {
+        Add_sync_comment(task.id, "ADDED_FROM_NOTION");
+      } catch (e) {
+        console.error(`Failed to add sync comment to task ${task.id}:`, e.message);
+        // Don't throw - task was created successfully, comment failure is non-critical
+      }
+    }
+    
     return task
   } catch (error) {
     console.error(error)

@@ -19,9 +19,7 @@ function Todoist_To_Notion_Sync() {
       .slice(0, 100)
 
     const taskIds = [...new Set(
-      latest100Tasks.flatMap(task =>
-        task.parent_id ? [task.id, task.parent_id] : [task.id]
-      )
+      latest100Tasks.map(task => task.id)
     )]
 
     const pages = Fetch_notion_pages_by_taskIds(taskIds);
@@ -39,6 +37,7 @@ function Todoist_To_Notion_Sync() {
     let page_ignored = 0;
     todoist_data.forEach(task => {
       const pageFound = pagesMapByTaskId[task?.id]
+      // Notes are now stored directly in task.notes
 
       const is_project_updated = pageFound && projectIDNameMap[task?.project_id] === pageFound?.properties["Project"]?.select?.name ? false: true
 
@@ -66,30 +65,22 @@ function Todoist_To_Notion_Sync() {
         page_ignored++
         return
       }
-      else if (!pageFound && CHECK_SYNC_TAGS(task.labels)) {
-        // DO Noting: Delete those task from todoist that are updated in todoist, after they were removed from Notion
+      else if (!pageFound && CHECK_SYNC_COMMENTS(task.notes || [])) {
+        // DO Nothing: Skip tasks that have sync comments (were synced from Notion)
         page_ignored++
-      } else if (!pageFound && !task.is_deleted && !CHECK_SYNC_TAGS(task.labels)) {
-        // Don't create task on notion, if sync label exist on it
-        let parentNotionId = null
-        if(task.parent_id) {
-          parentNotionId = (pagesMapByTaskId[task.parent_id])?.id
-        }
+      } else if (!pageFound && !task.is_deleted && !CHECK_SYNC_COMMENTS(task.notes || [])) {
+        // Create task on notion if it doesn't exist and doesn't have sync comments
         const taskObject = Create_object_task_for_notion(task)
-        const page = Create(parentNotionId, taskObject);
+        const page = Create(taskObject);
         page.taskDetails = task
         page_created.push(page)
       } else if (pageFound && task.is_deleted) {
         const res = Delete_page(pageFound)
         page_deleted.push(res)
       } else {
-        let parentNotionId = null
-        if(task.parent_id) {
-          parentNotionId = pages[task.parent_id]
-        }
         const taskObject = Create_object_task_for_notion(task, true, pageFound)
         
-        const res = Update(pageFound, parentNotionId, taskObject)
+        const res = Update(pageFound, taskObject)
         if (res) {
           res.taskDetails = task
           page_updated.push(res)
@@ -107,6 +98,7 @@ function Todoist_To_Notion_Sync() {
         url: page.url,
         labels: taskDetails.labels,
         description: taskDetails.description,
+        notes: taskDetails.notes || [],
         type: "create"
       })
     })
@@ -182,6 +174,29 @@ function Create_object_task_for_notion(task, isUpdate = false, pageFound = null)
         }
       }
     },
+  }
+  
+  // Store labels in Notion's Labels property (filter out sync labels)
+  if (task.labels && task.labels.length > 0) {
+    const filteredLabels = FILTER_SYNC_LABELS(task.labels);
+    if (filteredLabels.length > 0) {
+      data.properties["Labels"] = {
+        "type": "multi_select",
+        "multi_select": filteredLabels.map(label => ({ "name": label }))
+      }
+    } else {
+      // Set empty multi_select if all labels were sync labels
+      data.properties["Labels"] = {
+        "type": "multi_select",
+        "multi_select": []
+      }
+    }
+  } else {
+    // Set empty multi_select if no labels
+    data.properties["Labels"] = {
+      "type": "multi_select",
+      "multi_select": []
+    }
   }
   
   // Handle recurring task status updates
@@ -311,16 +326,33 @@ function Create_sync_payload(taskSyncArray) {
   for (let i = 0; i < taskSyncArray.length; i++) {
     let task = taskSyncArray[i]
     if (task.type === 'create') {
-      console.log(task.labels)
-      payload.push({
-        "type": "item_update",
-        "uuid": Utilities.getUuid(),
-        "args": {
-          id: task.taskId,
-          labels: !CHECK_SYNC_TAGS(task.labels) ? [...task.labels, "ADDED_TO_NOTION"]: task.labels,
-          description: !task.description.includes("Notion Link") ? "Notion Link: " + (task.url) + "\n" + task.description: task.description,
-        }
-      })
+      // Check if sync comment already exists
+      const hasSyncComment = task.notes && CHECK_SYNC_COMMENTS(task.notes);
+      
+      // Add comment instead of label if sync comment doesn't exist
+      if (!hasSyncComment) {
+        payload.push({
+          "type": "note_add",
+          "temp_id": Utilities.getUuid(),
+          "uuid": Utilities.getUuid(),
+          "args": {
+            item_id: task.taskId,
+            content: "ADDED_TO_NOTION"
+          }
+        })
+      }
+      
+      // Update description (keep labels as they are, don't add sync labels)
+      if (!task.description || !task.description.includes("Notion Link")) {
+        payload.push({
+          "type": "item_update",
+          "uuid": Utilities.getUuid(),
+          "args": {
+            id: task.taskId,
+            description: "Notion Link: " + (task.url) + (task.description ? "\n" + task.description : ""),
+          }
+        })
+      }
     }
   }
   return payload

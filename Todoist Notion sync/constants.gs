@@ -51,8 +51,21 @@ const projectIDNameMap = {
 }
 
 const SYNC_LABELS = ["ADDED_TO_NOTION", "ADDED_FROM_NOTION"]
-function CHECK_SYNC_TAGS(arr) {
-  if(!arr || !arr.length) return false
-  const set = new Set(SYNC_LABELS)
-  return arr.some(ele => set.has(ele))
+const SYNC_COMMENTS = ["ADDED_TO_NOTION", "ADDED_FROM_NOTION"]
+
+// Check if a task has sync comments (replaces label-based sync checking)
+function CHECK_SYNC_COMMENTS(notes) {
+  if(!notes || !notes.length) return false
+  const syncCommentSet = new Set(SYNC_COMMENTS)
+  return notes.some(note => {
+    const content = note.content || '';
+    return SYNC_COMMENTS.some(syncComment => content.includes(syncComment))
+  })
+}
+
+// Filter out sync labels from labels array (for storing in Notion)
+function FILTER_SYNC_LABELS(labels) {
+  if(!labels || !labels.length) return []
+  const syncLabelSet = new Set(SYNC_LABELS)
+  return labels.filter(label => !syncLabelSet.has(label))
 }

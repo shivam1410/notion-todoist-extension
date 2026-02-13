@@ -78,6 +78,9 @@ function Notion_To_Todoist_Sync() {
           }
           payload.push(syncPayload)
         }
+        // if (data && data.item) {
+        //   todoistTaskMap[taskId] = { ...todoistTaskMap[taskId], ...data.item };
+        // }
         return;
       }
       else if (taskId && !isTaskInvalid) {
@@ -88,7 +91,9 @@ function Notion_To_Todoist_Sync() {
         payload.push(...syncPayload)
       } else if (!isDone && !taskId) {
         const task = Create_Todoist(page)
-        update_notion_for_create(page.id, task.id, task?.created_at)
+        if (task && task.id) {
+          update_notion_for_create(page.id, task.id, task?.created_at)
+        }
       }
     })
 
@@ -133,7 +138,21 @@ function Notion_To_Todoist_Sync() {
 
 function Create_update_payload(page, task) {
   let payload = []
-  let { obj, durationPayload } = Create_todoist_payload_object(page, true, task)
+  let { obj, durationPayload, addSyncComment } = Create_todoist_payload_object(page, true, task)
+  
+  // Add sync comment if needed
+  if (addSyncComment) {
+    payload.push({
+      "type": "note_add",
+      "temp_id": Utilities.getUuid(),
+      "uuid": Utilities.getUuid(),
+      "args": {
+        item_id: task.id,
+        content: "ADDED_FROM_NOTION"
+      }
+    })
+  }
+  
   if ("project_id" in obj) {
     payload.push({
       "type": "item_move",
@@ -153,7 +172,7 @@ function Create_update_payload(page, task) {
       }
     })
   }
-  if (obj?.content !== undefined || obj?.priority !== undefined || obj?.description !== undefined || obj?.due !== undefined) {
+  if (obj?.content !== undefined || obj?.priority !== undefined || obj?.description !== undefined || obj?.due !== undefined || obj?.labels !== undefined) {
     const args = {
       id: task.id,
       due_lang: "en",
@@ -163,6 +182,7 @@ function Create_update_payload(page, task) {
     if ("priority" in obj) args.priority = obj.priority;
     if ("description" in obj) args.description = obj.description;
     if ("due" in obj) args.due = obj.due;
+    if ("labels" in obj) args.labels = obj.labels;
 
     payload.push({
       type: "item_update",
@@ -203,6 +223,9 @@ function Create_todoist_payload_object(page, isUpdate, pastTask) {
 
   // For Create, build the Complete object at once
   if (!isUpdate) {
+    // Get labels from Notion if they exist
+    const notionLabels = page?.properties?.['Labels']?.multi_select?.map(label => label.name) || [];
+    
     const payload = {
       content: content,
       project_id: projectNameIdMap[page?.properties?.['Project']?.select?.name] ?? projectNameIdMap["Inbox"],
@@ -210,18 +233,21 @@ function Create_todoist_payload_object(page, isUpdate, pastTask) {
       duration: duration ? duration : undefined,
       duration_unit: duration ? 'minute' : undefined,
       due_datetime: due_datetime ? due_datetime : undefined,
-      labels: ["ADDED_FROM_NOTION"],
+      labels: notionLabels,
       description: "Notion Link - " + (page.url),
       due_date: due_date ? due_date : undefined,
     }
-    return { obj: payload }
+    return { obj: payload, addSyncComment: true } // Flag to add comment after creation
   }
 
-  // For Updating Data, Create Pyload, that will be utilised by SYNC API
+  // For Updating Data, Create Payload, that will be utilised by SYNC API
   const payload = {}
 
-  if (!CHECK_SYNC_TAGS(pastTask.labels)) {
-    payload.labels = ["ADDED_FROM_NOTION"];
+  const notionLabels = page?.properties?.['Labels']?.multi_select?.map(label => label.name) || [];
+  payload.labels = notionLabels
+
+  if (!CHECK_SYNC_COMMENTS(pastTask.notes)) {
+    payload.addSyncComment = true; // Flag to add comment
   }
   
   if (page?.properties?.['Status'] && page?.properties?.['Status']?.checkbox)

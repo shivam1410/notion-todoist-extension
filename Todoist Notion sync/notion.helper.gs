@@ -62,13 +62,8 @@ function Delete_page(page) {
   }
 }
 
-function Update(page, parentPageId, taskObject) {
+function Update(page, taskObject) {
   try {
-    if(parentPageId) {
-      taskObject["parent"] = {
-        "page_id": parentPageId
-      }
-    }
     const options = {
       method: 'patch',
       contentType: 'application/json',
@@ -94,16 +89,10 @@ function Update(page, parentPageId, taskObject) {
   }
 }
 
-function Create(parentPageId = null, taskObject) {
+function Create(taskObject) {
   try {
-    if(parentPageId) {
-      taskObject["parent"] = {
-        "page_id": parentPageId
-      }
-    } else {
-      taskObject["parent"] = {
-        "database_id": Database_ID
-      }
+    taskObject["parent"] = {
+      "database_id": Database_ID
     }
     const options = {
       method: 'post',

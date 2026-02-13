@@ -80,7 +80,7 @@ function Fetch_Todoist_Sync_Data(syncToken) {
   try {
     const query = {
       sync_token: syncToken ? syncToken : '*',
-      resource_types: '["items"]'
+      resource_types: '["items", "notes"]'
     };
     const options = {
       method: 'get',
@@ -96,7 +96,23 @@ function Fetch_Todoist_Sync_Data(syncToken) {
     urlfetchExecution++
     const response = UrlFetchApp.fetch(url, options);
     if (response.getResponseCode() === 200) {
-      let { items, sync_token } = (JSON.parse(response.getContentText()));
+      let { items, notes, sync_token } = (JSON.parse(response.getContentText()));
+      // Map notes to their task IDs first
+      const notesByTaskId = {};
+      if (notes && notes.length > 0) {
+        notes.forEach(note => {
+          if (!notesByTaskId[note.item_id]) {
+            notesByTaskId[note.item_id] = [];
+          }
+          notesByTaskId[note.item_id].push(note);
+        });
+      }
+      // Attach notes directly to each item
+      if (items && items.length > 0) {
+        items.forEach(item => {
+          item.notes = notesByTaskId[item.id] || [];
+        });
+      }
       return { todoist_data: items, sync_token }
     } else {
       throw new Error(`Failed to fetch Todoist data: ${response.getContentText()}`);
